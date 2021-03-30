@@ -17,7 +17,7 @@
 
 WiFiMulti wifiMulti;
 const char* URL = "http://fotoni.it/public/2021/epd_image";
-const int imageOffset = 74;
+const int imageOffset = 30;
 uint8_t *framebuffer;
 
 void InitialiseDisplay() {
@@ -62,7 +62,11 @@ void getImage() {
         // get tcp stream
         WiFiClient * stream = http.getStreamPtr();
         // Skip the image header
-        stream->readBytes(buff, imageOffset);
+        uint8_t headerRows = 0;
+        do {
+          headerRows += (stream->read() == 0x0a);
+        } while ( headerRows < 2);
+        // stream->readBytes(buff, imageOffset);
         // read all data from server, until the framebuffer is filled
         while (http.connected() && (len > 0 || len == -1) && (frameoffset < EPD_WIDTH * EPD_HEIGHT / 2)) {
           // get available data size
@@ -72,10 +76,10 @@ void getImage() {
             // read up to 128 byte
             int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
             // Convert 8-bit pixels of the input buffer to 4-bit pixels in the framebuffer
-            for(uint8_t p = 0; p < c ; p+=2) {
-              *(framebuffer+frameoffset) = (buff[p+1]&0xf0) | (buff[p]>>4);
+            for (uint8_t p = 0; p < c ; p += 2) {
+              *(framebuffer + frameoffset) = (buff[p + 1] & 0xf0) | (buff[p] >> 4);
               frameoffset++;
-            }          
+            }
             if (len > 0) {
               len -= c;
             }
@@ -103,5 +107,5 @@ void edp_update() {
 void loop() {
   getImage();
   edp_update();
-  delay(60000);
+  delay(120000);
 }
