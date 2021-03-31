@@ -17,27 +17,20 @@
 
 WiFiMulti wifiMulti;
 const char* URL = "http://fotoni.it/public/2021/epd_image";
-const int imageOffset = 30;
 uint8_t *framebuffer;
+#define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
+#define TIME_TO_SLEEP  5*60        /* Time ESP32 will go to sleep (in seconds) */
+
 
 void InitialiseDisplay() {
   epd_init();
   framebuffer = (uint8_t *)ps_calloc(sizeof(uint8_t), EPD_WIDTH * EPD_HEIGHT / 2);
-  if (!framebuffer) Serial.println("Memory alloc failed!");
-  memset(framebuffer, 0xFF, EPD_WIDTH * EPD_HEIGHT / 2);
+  if (framebuffer) {
+    memset(framebuffer, 0xFF, EPD_WIDTH * EPD_HEIGHT / 2);
+  }
 }
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println();
-  Serial.println();
-  Serial.println();
-
-  for (uint8_t t = 4; t > 0; t--) {
-    Serial.printf("[SETUP] WAIT %d...\n", t);
-    Serial.flush();
-    delay(200);
-  }
   // #define your WiFi SSID and password in "secrets.h" file
   wifiMulti.addAP(WIFI_SSID, WIFI_PWD);
   InitialiseDisplay();
@@ -51,7 +44,6 @@ void getImage() {
     int httpCode = http.GET();
 
     if (httpCode > 0) {
-      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
 
       // file found at server
       if (httpCode == HTTP_CODE_OK) {
@@ -59,14 +51,16 @@ void getImage() {
         int len = http.getSize();
         // create buffer for read
         uint8_t buff[128] = { 0 };
+
         // get tcp stream
         WiFiClient * stream = http.getStreamPtr();
+
         // Skip the image header
         uint8_t headerRows = 0;
         do {
           headerRows += (stream->read() == 0x0a);
         } while ( headerRows < 2);
-        // stream->readBytes(buff, imageOffset);
+
         // read all data from server, until the framebuffer is filled
         while (http.connected() && (len > 0 || len == -1) && (frameoffset < EPD_WIDTH * EPD_HEIGHT / 2)) {
           // get available data size
@@ -75,6 +69,7 @@ void getImage() {
           if (size) {
             // read up to 128 byte
             int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+
             // Convert 8-bit pixels of the input buffer to 4-bit pixels in the framebuffer
             for (uint8_t p = 0; p < c ; p += 2) {
               *(framebuffer + frameoffset) = (buff[p + 1] & 0xf0) | (buff[p] >> 4);
@@ -86,12 +81,7 @@ void getImage() {
           }
           delay(1);
         }
-
-        Serial.println();
-        Serial.print("[HTTP] connection closed or file end.\n");
       }
-    } else {
-      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
     }
     http.end();
   }
@@ -105,7 +95,9 @@ void edp_update() {
 }
 
 void loop() {
+  delay(1000);
   getImage();
   edp_update();
-  delay(120000);
+  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP*uS_TO_S_FACTOR);
+  esp_deep_sleep_start();
 }
