@@ -1,0 +1,18 @@
+#!/bin/bash
+# Download today's facts from Wikipedia, render the page and make it available for LilyGo T5 e-paper display ESP32 
+# Italian version
+# Requires:
+#	wkhtmltoimage
+#	xvfb-run
+#	imagemagick 6
+
+# Insert directory of your Web server matching the URL in the ESP32 sketch
+cd /var/www/html/fotoni/public/2021
+
+# Retrieve today's facts without the rest of Wikipedia main page
+URL="https://it.wikipedia.org/wiki/Template:PaginaPrincipale/Attualita/"$(date +%d_%B)
+/usr/bin/xvfb-run wkhtmltoimage --width 1152 --zoom 1.15 --crop-x 203 --crop-y 258 --crop-w 960 --crop-h 470 -n $URL wiki.png
+
+# Add title and convert the image for optimal display on LilyGo T5 4.7" e-paper
+/usr/bin/convert-im6 wiki.png -gravity center -extent 960x540 -gravity North -pointsize 32 -weight Bold -annotate +0+8 "ACCADDE OGGI" -gamma 0.7 -sharpen 0x1.8 -colorspace Gray -dither FloydSteinberg -colors 16 pgm:epd_image
+
