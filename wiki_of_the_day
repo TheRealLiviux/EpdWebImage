@@ -1,17 +1,29 @@
 #!/bin/bash
-# Download today's facts from Wikipedia, render the page and make it available for LilyGo T5 e-paper display ESP32 
+# Download today's facts from Wikipedia, render the page and make it available for LilyGo T5 e-paper display ESP32
+# running this sketch: https://github.com/TheRealLiviux/EpdWebImage
+
 # Italian version
+# Scarica la pagina degli eventi del giorno da Wikipedia, la converte in immagine e la prepara per essere visualizzata
+# sullo schermo a carta elettronica del LilyGo T5 e-paper display ESP32
+# mediante lo sketch https://github.com/TheRealLiviux/EpdWebImage
+
 # Requires:
-#	wkhtmltoimage
+#	wkhtmltoimage (from http://wkhtmltopdf.org/)
 #	xvfb-run
 #	imagemagick 6
+# Schedule it to run every night on your Web server
 
 # Insert directory of your Web server matching the URL in the ESP32 sketch
 cd /var/www/html/fotoni/public/2021
 
-# Retrieve today's facts without the rest of Wikipedia main page
-URL="https://it.wikipedia.org/wiki/Template:PaginaPrincipale/Attualita/"$(date +%d_%B)
-/usr/bin/xvfb-run wkhtmltoimage --width 1200 --zoom 1.3 --crop-x 222 --crop-y 292 --crop-w 960 --crop-h 512 -n $URL wiki.png
+# Today's facts without the rest of Wikipedia main page
+URL="https://it.wikipedia.org/wiki/Template:PaginaPrincipale/Attualita/"$(date +%-d_%B)
 
-# Add title and convert the image for optimal display on LilyGo T5 4.7" e-paper
-/usr/bin/convert-im6 wiki.png -gravity center -extent 960x540 -gravity North -pointsize 32 -weight Bold -annotate +0+8 "ACCADDE OGGI" -level 32 -sharpen 0x1.8 -colorspace Gray -dither FloydSteinberg -colors 16 pgm:epd_image
+# Retrieve the page, cut the relevant part and save the image
+/usr/bin/xvfb-run wkhtmltoimage --width 1200 --zoom 1.4 --crop-x 242 --crop-y 368 --crop-w 960 --crop-h 540 -n $URL wiki.png
+
+# Add title and convert the image for optimal display on LilyGo T5 4.7" 16 grey levels e-paper
+
+/usr/bin/convert-im6 wiki.png -gravity center -extent 960x540 -gravity North -pointsize 28 -weight Bold -annotate +0+8 "ACCADDE OGGI - $(date +'%-d %B')" -level 32 -sharpen 0x1.8 -colorspace Gray -dither FloydSteinberg -colors 16 pgm:epd_image.pgm
+
+logger "$0 - Converted page $URL"
