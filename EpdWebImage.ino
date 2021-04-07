@@ -13,6 +13,7 @@
 #include <WiFiMulti.h>
 #include <HTTPClient.h>
 #include "epd_driver.h"
+#include "opensans18b.h"
 #include "secrets.h"
 
 WiFiMulti wifiMulti;
@@ -45,42 +46,42 @@ int getImage() {
   http.begin(URL);
   int httpCode = http.GET();
   // file found at server
-  if (httpCode == HTTP_CODE_OK) {
-    delay(1000);
-    uint32_t frameoffset = 0;
-    int len = http.getSize();
-    // create buffer for read
-    uint8_t buff[128] = { 0 };
+  if (httpCode != HTTP_CODE_OK) {
+    return 0;
+  }
+  uint32_t frameoffset = 0;
+  int len = http.getSize();
+  // create buffer for read
+  uint8_t buff[128] = { 0 };
 
-    // get tcp stream
-    WiFiClient * stream = http.getStreamPtr();
+  // get tcp stream
+  WiFiClient * stream = http.getStreamPtr();
 
-    // Skip the image header
-    uint8_t headerRows = 0;
-    do {
-      headerRows += (stream->read() == 0x0a);
-    } while ( headerRows < 2 && stream->available());
+  // Skip the image header
+  uint8_t headerRows = 0;
+  do {
+    headerRows += (stream->read() == 0x0a);
+  } while ( headerRows < 2 && stream->available());
 
-    // read all data from server, until the framebuffer is filled
-    while (http.connected() && (len > 0 || len == -1) && (frameoffset < EPD_WIDTH * EPD_HEIGHT / 2)) {
-      // get available data size
-      size_t size = stream->available();
+  // read all data from server, until the framebuffer is filled
+  while (http.connected() && (len > 0 || len == -1) && (frameoffset < EPD_WIDTH * EPD_HEIGHT / 2)) {
+    // get available data size
+    size_t size = stream->available();
 
-      if (size) {
-        // read up to 128 byte
-        int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+    if (size) {
+      // read up to 128 byte
+      int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
 
-        // Convert 8-bit pixels of the input buffer to 4-bit pixels in the framebuffer
-        for (uint8_t p = 0; p < c ; p += 2) {
-          *(framebuffer + frameoffset) = (buff[p + 1] & 0xf0) | (buff[p] >> 4);
-          frameoffset++;
-        }
-        if (len > 0) {
-          len -= c;
-        }
+      // Convert 8-bit pixels of the input buffer to 4-bit pixels in the framebuffer
+      for (uint8_t p = 0; p < c ; p += 2) {
+        *(framebuffer + frameoffset) = (buff[p + 1] & 0xf0) | (buff[p] >> 4);
+        frameoffset++;
       }
-      delay(1);
+      if (len > 0) {
+        len -= c;
+      }
     }
+    delay(1);
   }
   http.end();
   return 1;
@@ -93,12 +94,22 @@ void edp_update() {
   epd_poweroff_all(); // Switch off all power to EPD
 }
 
+void edp_errorSign() {
+  epd_fill_circle(EPD_WIDTH / 2, EPD_HEIGHT / 2, EPD_HEIGHT / 2 - 20, 0x80, framebuffer);
+  epd_fill_circle(EPD_WIDTH / 2, EPD_HEIGHT / 2, EPD_HEIGHT / 2 - 60, 0xFF, framebuffer);
+  int cursor_x = (EPD_WIDTH - EPD_HEIGHT) / 2;
+  int cursor_y = EPD_HEIGHT / 2;
+  char *errMsg = "CONNESSIONE NON RIUSCITA";
+  write_string((GFXfont *)&OpenSans18B, errMsg, &cursor_x, &cursor_y, framebuffer);
+}
+
 void loop() {
   delay(1000);
-  if (getImage()) {
-    edp_update();
+  if (!getImage()) {
+    edp_errorSign();
   }
-  // TODO: else display some diagnostic text on the screen
+  edp_update();
+  //  esp_sleep_enable_ext0_wakeup(GPIO_NUM_39,0); //1 = High, 0 = Low
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   esp_deep_sleep_start();
 }
