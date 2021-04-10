@@ -13,7 +13,7 @@
 #include <WiFiMulti.h>
 #include <HTTPClient.h>
 #include "epd_driver.h"
-#include "opensans18b.h"
+#include "opensans12b.h"
 #include "secrets.h"
 
 WiFiMulti wifiMulti;
@@ -21,7 +21,6 @@ const char* URL = "http://fotoni.it/public/2021/epd_image.pgm";
 uint8_t *framebuffer;
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP  5*60        /* Time ESP32 will go to sleep (in seconds) */
-
 
 void InitialiseDisplay() {
   epd_init();
@@ -94,13 +93,17 @@ void edp_update() {
   epd_poweroff_all(); // Switch off all power to EPD
 }
 
+FontProperties fontP = { 0xFF, 0x80, 33, 0};
+
 void edp_errorSign() {
-  epd_fill_circle(EPD_WIDTH / 2, EPD_HEIGHT / 2, EPD_HEIGHT / 2 - 20, 0x80, framebuffer);
+  epd_fill_circle(EPD_WIDTH / 2, EPD_HEIGHT / 2, EPD_HEIGHT / 2 - 20, 0, framebuffer);
   epd_fill_circle(EPD_WIDTH / 2, EPD_HEIGHT / 2, EPD_HEIGHT / 2 - 60, 0xFF, framebuffer);
-  int cursor_x = (EPD_WIDTH - EPD_HEIGHT) / 2;
-  int cursor_y = EPD_HEIGHT / 2;
+  epd_fill_rect((EPD_WIDTH - EPD_HEIGHT) / 2 + 30, EPD_HEIGHT / 2 - 20, EPD_HEIGHT - 50, 40, 0, framebuffer);
+  int cursor_x = (EPD_WIDTH - EPD_HEIGHT) / 2 + 88;
+  int cursor_y = EPD_HEIGHT / 2 + 9;
   char *errMsg = "CONNESSIONE NON RIUSCITA";
-  write_string((GFXfont *)&OpenSans18B, errMsg, &cursor_x, &cursor_y, framebuffer);
+//  write_string((GFXfont *)&OpenSans12B, errMsg, &cursor_x, &cursor_y, framebuffer);
+  write_mode((GFXfont *)&OpenSans12B, errMsg, &cursor_x, &cursor_y, framebuffer, WHITE_ON_WHITE, &fontP);
 }
 
 void loop() {
@@ -109,7 +112,6 @@ void loop() {
     edp_errorSign();
   }
   edp_update();
-  //  esp_sleep_enable_ext0_wakeup(GPIO_NUM_39,0); //1 = High, 0 = Low
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   esp_deep_sleep_start();
 }
