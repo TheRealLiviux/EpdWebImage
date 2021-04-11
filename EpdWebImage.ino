@@ -11,6 +11,7 @@
 #include <Arduino.h>
 #include "epd_driver.h"
 #include "opensans12b.h"
+#include "esp_adc_cal.h"
 #include <WiFi.h>
 #include <WiFiMulti.h>
 #include <HTTPClient.h>
@@ -23,8 +24,10 @@
 #define WIFI_PWD "*************"
 #endif
 
+int vref = 1100;
 WiFiMulti wifiMulti;
 String URL = "http://fotoni.it/public/2021/epd_image";  // Suffixed with "[screen_num].pgm"
+
 uint8_t *framebuffer;
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP  5*60        /* Time ESP32 will go to sleep (in seconds) */
@@ -105,7 +108,7 @@ void edp_update() {
   epd_poweron();      // Switch on EPD display
   epd_clear();
   epd_draw_grayscale_image(epd_full_screen(), framebuffer); // Update the screen
-  epd_poweroff_all(); // Switch off all power to EPD
+  epd_poweroff(); // Switch off all power to EPD
 }
 
 FontProperties fontP = { 0xFF, 0x80, 33, 0};
@@ -127,8 +130,8 @@ void edp_errorSign() {
 void epd_banner(char *text) {
   cursor_x = 14;
   cursor_y = EPD_HEIGHT - 2;
-//  epd_fill_rect(0, EPD_HEIGHT - 16, EPD_WIDTH-1, 15, 0xff, NULL);
-//  epd_draw_rect(0, EPD_HEIGHT - 16, EPD_WIDTH-1, 15, 0, NULL);
+  epd_clear_area((Rect_t){2, EPD_HEIGHT - 20, EPD_WIDTH-4, 18});
+  epd_clear_area((Rect_t){2, EPD_HEIGHT - 20, EPD_WIDTH-4, 18});
   write_string((GFXfont *)&OpenSans12B, text, &cursor_x, &cursor_y, NULL);
 }
 
@@ -143,18 +146,36 @@ void prepareSleep() {
   //  esp_sleep_enable_ext1_wakeup(GPIO_SEL_34 | GPIO_SEL_35 | GPIO_SEL_39, ESP_EXT1_WAKEUP_ANY_HIGH);
   esp_sleep_enable_ext1_wakeup(GPIO_SEL_39, ESP_EXT1_WAKEUP_ALL_LOW);
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+  epd_poweroff_all();
 }
 
 
+int batteryCharge() {
+  uint8_t percentage = 100;
+  esp_adc_cal_characteristics_t adc_chars;
+  esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
+  if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+    vref = adc_chars.vref;
+  }
+  float voltage = analogRead(36) / 4096.0 * 6.566 * (vref / 1000.0);
+  if (voltage > 1 ) { // Only display if there is a valid reading
+    percentage = 2836.9625 * pow(voltage, 4) - 43987.4889 * pow(voltage, 3) + 255233.8134 * pow(voltage, 2) - 656689.7123 * voltage + 632041.7303;
+    if (voltage >= 4.20) percentage = 100;
+    if (voltage <= 3.20) percentage = 0;  // orig 3.5
+  }
+  return percentage;
+}
+
 void loop() {
-  delay(1000);
+  int battery = batteryCharge();
   String imageUrl = URL + "_" + screenNum + ".pgm";
-  char *message = (char *)((String("GET image ") + imageUrl).c_str());
+  char *message = (char *)((String("SHOW IMAGE #") + String(screenNum+1) + " - Battery:" + String(battery)).c_str());
   epd_banner(message);
   if (!getImage(imageUrl)) {
     edp_errorSign();
   }
   edp_update();
+  delay(100);
   prepareSleep();
   esp_deep_sleep_start();
 }
