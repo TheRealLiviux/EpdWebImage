@@ -9,18 +9,26 @@
 */
 
 #include <Arduino.h>
+#include "epd_driver.h"
+#include "opensans12b.h"
 #include <WiFi.h>
 #include <WiFiMulti.h>
 #include <HTTPClient.h>
-#include "epd_driver.h"
-#include "opensans12b.h"
 #include "secrets.h"
+// Define your WiFi SSID and password in "secrets.h" file
+#if !defined(WIFI_SSID)
+#define WIFI_SSID "*************"
+#endif
+#if !defined(WIFI_PWD)
+#define WIFI_PWD "*************"
+#endif
 
 WiFiMulti wifiMulti;
-const char* URL = "http://fotoni.it/public/2021/epd_image.pgm";
+String URL = "http://fotoni.it/public/2021/epd_image";  // Suffixed with "[screen_num].pgm"
 uint8_t *framebuffer;
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP  5*60        /* Time ESP32 will go to sleep (in seconds) */
+RTC_DATA_ATTR uint8_t screenNum = 0;
 
 void InitialiseDisplay() {
   epd_init();
@@ -31,18 +39,25 @@ void InitialiseDisplay() {
 }
 
 void setup() {
-  // #define your WiFi SSID and password in "secrets.h" file
   wifiMulti.addAP(WIFI_SSID, WIFI_PWD);
   InitialiseDisplay();
+
+  esp_sleep_wakeup_cause_t wakeup_reason;
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+  // If button has been pressed, cycle through 4 images
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
+    screenNum = (++screenNum) & 3;
+  }
+
 }
 
-int getImage() {
+int getImage(String imageUrl) {
   // wait for WiFi connection
   if ((wifiMulti.run() != WL_CONNECTED)) {
     return 0;
   }
   HTTPClient http;
-  http.begin(URL);
+  http.begin((const char *)(imageUrl.c_str()));
   int httpCode = http.GET();
   // file found at server
   if (httpCode != HTTP_CODE_OK) {
@@ -95,23 +110,51 @@ void edp_update() {
 
 FontProperties fontP = { 0xFF, 0x80, 33, 0};
 
+int cursor_x = (EPD_WIDTH - EPD_HEIGHT) / 2 + 88;
+int cursor_y = EPD_HEIGHT / 2 + 9;
+
 void edp_errorSign() {
   epd_fill_circle(EPD_WIDTH / 2, EPD_HEIGHT / 2, EPD_HEIGHT / 2 - 20, 0, framebuffer);
   epd_fill_circle(EPD_WIDTH / 2, EPD_HEIGHT / 2, EPD_HEIGHT / 2 - 60, 0xFF, framebuffer);
   epd_fill_rect((EPD_WIDTH - EPD_HEIGHT) / 2 + 30, EPD_HEIGHT / 2 - 20, EPD_HEIGHT - 50, 40, 0, framebuffer);
-  int cursor_x = (EPD_WIDTH - EPD_HEIGHT) / 2 + 88;
-  int cursor_y = EPD_HEIGHT / 2 + 9;
+  cursor_x = (EPD_WIDTH - EPD_HEIGHT) / 2 + 88;
+  cursor_y = EPD_HEIGHT / 2 + 9;
   char *errMsg = "CONNESSIONE NON RIUSCITA";
-//  write_string((GFXfont *)&OpenSans12B, errMsg, &cursor_x, &cursor_y, framebuffer);
+  //  write_string((GFXfont *)&OpenSans12B, errMsg, &cursor_x, &cursor_y, framebuffer);
   write_mode((GFXfont *)&OpenSans12B, errMsg, &cursor_x, &cursor_y, framebuffer, WHITE_ON_WHITE, &fontP);
 }
 
+void epd_banner(char *text) {
+  cursor_x = 14;
+  cursor_y = EPD_HEIGHT - 2;
+//  epd_fill_rect(0, EPD_HEIGHT - 16, EPD_WIDTH-1, 15, 0xff, NULL);
+//  epd_draw_rect(0, EPD_HEIGHT - 16, EPD_WIDTH-1, 15, 0, NULL);
+  write_string((GFXfont *)&OpenSans12B, text, &cursor_x, &cursor_y, NULL);
+}
+
+void prepareSleep() {
+  //  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+  //  gpio_pullup_dis(GPIO_SEL_34);
+  //  gpio_pulldown_en(GPIO_SEL_34);
+  //  gpio_pullup_dis(GPIO_SEL_35);
+  //  gpio_pulldown_en(GPIO_SEL_35);
+  //  gpio_pullup_dis(GPIO_SEL_39);
+  //  gpio_pulldown_en(GPIO_SEL_39);
+  //  esp_sleep_enable_ext1_wakeup(GPIO_SEL_34 | GPIO_SEL_35 | GPIO_SEL_39, ESP_EXT1_WAKEUP_ANY_HIGH);
+  esp_sleep_enable_ext1_wakeup(GPIO_SEL_39, ESP_EXT1_WAKEUP_ALL_LOW);
+  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+}
+
+
 void loop() {
   delay(1000);
-  if (!getImage()) {
+  String imageUrl = URL + "_" + screenNum + ".pgm";
+  char *message = (char *)((String("GET image ") + imageUrl).c_str());
+  epd_banner(message);
+  if (!getImage(imageUrl)) {
     edp_errorSign();
   }
   edp_update();
-  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+  prepareSleep();
   esp_deep_sleep_start();
 }
