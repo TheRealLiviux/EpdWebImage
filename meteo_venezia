@@ -1,0 +1,15 @@
+#!/bin/bash
+# Download weather forecast for Venice, render the page and make it available for LilyGo T5 e-paper display ESP32
+# running this sketch: https://github.com/TheRealLiviux/EpdWebImage
+# (italian version)
+# Scarica le previsioni del tempo per Venezia dal sito dell'Agenzia Regionale per la Prevenzione e Protezione Ambientale del Veneto,
+# la converte in immagine e la prepara per lo schermo a carta elettronica del LilyGo T5 ESP32
+
+cd /var/www/html/fotoni/public/2021
+
+URL="https://www.arpa.veneto.it/previsioni/it/html/mtg_11.html"
+/usr/bin/xvfb-run wkhtmltoimage --zoom 1.4 --crop-x 182 --crop-y 378 --crop-w 960 --crop-h 540 $URL  meteo_arpav.png
+
+/usr/bin/convert-im6 meteo_arpav.png -gravity center -extent 960x540 -sharpen 0x1.8 -colorspace Gray -dither FloydSteinberg -colors 16 pgm:epd_image_2.pgm
+
+logger "$0 - Converted page $URL"
