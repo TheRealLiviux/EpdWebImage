@@ -1,11 +1,9 @@
 #!/bin/bash
 # Download today's facts from Wikipedia, render the page and make it available for LilyGo T5 e-paper display ESP32
-# running this sketch: https://github.com/TheRealLiviux/EpdWebImage
 
-# Italian version
+# Italiano
 # Scarica la pagina degli eventi del giorno da Wikipedia, la converte in immagine e la prepara per essere visualizzata
 # sullo schermo a carta elettronica del LilyGo T5 e-paper display ESP32
-# mediante lo sketch https://github.com/TheRealLiviux/EpdWebImage
 
 # Requires:
 #	wkhtmltoimage (from http://wkhtmltopdf.org/)
@@ -24,6 +22,6 @@ URL="https://it.wikipedia.org/wiki/Template:PaginaPrincipale/Attualita/"$(date +
 
 # Add title and convert the image for optimal display on LilyGo T5 4.7" 16 grey levels e-paper
 
-/usr/bin/convert-im6 wiki.png -gravity center -extent 960x540 -gravity North -pointsize 28 -weight Bold -annotate +0+8 "ACCADDE OGGI - $(date +'%-d %B')" -level 32 -sharpen 0x1.8 -colorspace Gray -dither FloydSteinberg -colors 16 pgm:epd_image.pgm
+/usr/bin/convert-im6 wiki.png -gravity center -extent 960x540 -gravity North -pointsize 28 -weight Bold -annotate +0+8 "ACCADDE OGGI - $(date +'%-d %B')" -level 32 -sharpen 0x1.8 -colorspace Gray -dither FloydSteinberg -colors 16 pgm:epd_image_1.pgm
 
 logger "$0 - Converted page $URL"
