@@ -1,8 +1,10 @@
 #!/bin/bash
 
 cd /var/www/html/fotoni/public/2021
-URL="https://www.servizitelevideo.rai.it/televideo/pub/tt4web/Nazionale/16_9_page-110.png"
-/usr/bin/wget $URL
-convert-im6 16_9_page-110.png -background black -gravity center -resize 960x540 -extent 960x540 -negate -sharpen 0x1.8 -colorspace Gray -dither FloydSteinberg -colors 16 pgm:epd_image_3.pgm
-rm 16_9_page-110.png
-logger "$0 - Converted page $URL"
+PAG_LEFT=103
+PAG_RIGHT=101
+wget "https://www.servizitelevideo.rai.it/televideo/pub/tt4web/Nazionale/16_9_page-${PAG_LEFT}.png"
+wget "https://www.servizitelevideo.rai.it/televideo/pub/tt4web/Nazionale/16_9_page-${PAG_RIGHT}.png"
+convert 16_9_page-${PAG_LEFT}.png 16_9_page-${PAG_RIGHT}.png +append -background black -colorspace Gray -resize "960x540!" -negate -gamma 0.75 -sharpen 0x1.333 -colors 16 pgm:epd_image_3.pgm
+rm -f 16_9_page-*.png*
+logger "$0 - Pagine ${PAG_LEFT} e ${PAG_RIGHT} convertite"
