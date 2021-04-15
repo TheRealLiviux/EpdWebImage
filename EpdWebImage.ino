@@ -24,47 +24,50 @@
 #define WIFI_PWD "*************"
 #endif
 
+enum imageState {
+  IMAGE_UNCHANGED,
+  IMAGE_CHANGED,
+  IMAGE_ERROR
+};
+
+char* screenNames[4]={"FOTO","OGGI","METEO","NOTIZIE"};
 int vref = 1100;
 WiFiMulti wifiMulti;
-String URL = "http://fotoni.it/public/2021/epd_image";  // Suffixed with "[screen_num].pgm"
+String URL = "http://fotoni.it/public/2021/epd_image";  // Suffixed with "_[screen_num].pgm"
 
 uint8_t *framebuffer;
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP  5*60        /* Time ESP32 will go to sleep (in seconds) */
 RTC_DATA_ATTR uint8_t screenNum = 0;
+RTC_DATA_ATTR uint16_t imageCrc[4] = {0, 0, 0, 0};
 
-void InitialiseDisplay() {
+void setup() {
+  wifiMulti.addAP(WIFI_SSID, WIFI_PWD);
   epd_init();
   framebuffer = (uint8_t *)ps_calloc(sizeof(uint8_t), EPD_WIDTH * EPD_HEIGHT / 2);
   if (framebuffer) {
     memset(framebuffer, 0xFF, EPD_WIDTH * EPD_HEIGHT / 2);
   }
-}
-
-void setup() {
-  wifiMulti.addAP(WIFI_SSID, WIFI_PWD);
-  InitialiseDisplay();
-
   esp_sleep_wakeup_cause_t wakeup_reason;
   wakeup_reason = esp_sleep_get_wakeup_cause();
-  // If button has been pressed, cycle through 4 images
+  // If button has been pressed, switch to the next image
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
     screenNum = (++screenNum) & 3;
+    imageCrc[screenNum] = 0;
   }
-
 }
 
 int getImage(String imageUrl) {
   // wait for WiFi connection
   if ((wifiMulti.run() != WL_CONNECTED)) {
-    return 0;
+    return IMAGE_ERROR;
   }
   HTTPClient http;
   http.begin((const char *)(imageUrl.c_str()));
   int httpCode = http.GET();
   // file found at server
   if (httpCode != HTTP_CODE_OK) {
-    return 0;
+    return IMAGE_ERROR;
   }
   uint32_t frameoffset = 0;
   int len = http.getSize();
@@ -79,7 +82,9 @@ int getImage(String imageUrl) {
   do {
     headerRows += (stream->read() == 0x0a);
   } while ( headerRows < 2 && stream->available());
-
+  stream->read();
+  stream->read();
+  uint16_t crc = 0;
   // read all data from server, until the framebuffer is filled
   while (http.connected() && (len > 0 || len == -1) && (frameoffset < EPD_WIDTH * EPD_HEIGHT / 2)) {
     // get available data size
@@ -93,6 +98,7 @@ int getImage(String imageUrl) {
       for (uint8_t p = 0; p < c ; p += 2) {
         *(framebuffer + frameoffset) = (buff[p + 1] & 0xf0) | (buff[p] >> 4);
         frameoffset++;
+        crc ^= (uint16_t)(*(buff + p));
       }
       if (len > 0) {
         len -= c;
@@ -101,14 +107,20 @@ int getImage(String imageUrl) {
     delay(1);
   }
   http.end();
-  return 1;
+  if (crc == imageCrc[screenNum]) {
+    return IMAGE_UNCHANGED;
+  }
+  imageCrc[screenNum] = crc;
+  return IMAGE_CHANGED;
 }
 
 void edp_update() {
-  epd_poweron();      // Switch on EPD display
+  epd_poweron();      // Switch on Electronic Paper Display
   epd_clear();
   epd_draw_grayscale_image(epd_full_screen(), framebuffer); // Update the screen
   epd_poweroff(); // Switch off all power to EPD
+  delay(250);
+  epd_poweroff_all();
 }
 
 FontProperties fontP = { 0xFF, 0x80, 33, 0};
@@ -130,10 +142,27 @@ void edp_errorSign() {
 void epd_banner(char *text) {
   cursor_x = 14;
   cursor_y = EPD_HEIGHT - 2;
-  epd_clear_area((Rect_t){2, EPD_HEIGHT - 20, EPD_WIDTH-4, 18});
-  epd_clear_area((Rect_t){2, EPD_HEIGHT - 20, EPD_WIDTH-4, 18});
+  epd_clear_area((Rect_t) {
+    2, EPD_HEIGHT - 20, EPD_WIDTH - 4, 18
+  });
   write_string((GFXfont *)&OpenSans12B, text, &cursor_x, &cursor_y, NULL);
 }
+
+void epd_cancel_banner() {
+  epd_clear_area_cycles((Rect_t) {
+    0, EPD_HEIGHT - 20, EPD_WIDTH, 19
+  }, 3, 200);
+  delay(100);
+  uint8_t *bannerBuffer = framebuffer + EPD_WIDTH * (EPD_HEIGHT - 20) / 2;
+  epd_draw_grayscale_image((Rect_t) {
+    0, EPD_HEIGHT - 20, EPD_WIDTH, 19
+  }, bannerBuffer);
+  delay(100);
+  epd_draw_grayscale_image((Rect_t) {
+    0, EPD_HEIGHT - 20, EPD_WIDTH, 19
+  }, bannerBuffer);
+}
+
 
 void prepareSleep() {
   //  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
@@ -146,7 +175,6 @@ void prepareSleep() {
   //  esp_sleep_enable_ext1_wakeup(GPIO_SEL_34 | GPIO_SEL_35 | GPIO_SEL_39, ESP_EXT1_WAKEUP_ANY_HIGH);
   esp_sleep_enable_ext1_wakeup(GPIO_SEL_39, ESP_EXT1_WAKEUP_ALL_LOW);
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-  epd_poweroff_all();
 }
 
 
@@ -169,13 +197,24 @@ int batteryCharge() {
 void loop() {
   int battery = batteryCharge();
   String imageUrl = URL + "_" + screenNum + ".pgm";
-  char *message = (char *)((String("SHOW IMAGE #") + String(screenNum+1) + " - Battery:" + String(battery)).c_str());
+  char *message = (char *)(String("Batt:") + String(battery) + String("% - ") + String(screenNames[screenNum]) ).c_str();
   epd_banner(message);
-  if (!getImage(imageUrl)) {
-    edp_errorSign();
+  switch (getImage(imageUrl)) {
+    case IMAGE_ERROR:
+      // Draw an error message over the image
+      // edp_errorSign();
+      epd_banner("ERRORE DI CONNESSIONE");
+      break;
+    case IMAGE_CHANGED:
+      // Redraw the whole screen
+      edp_update();
+      break;
+    case IMAGE_UNCHANGED:
+      // Redraw only the part of the image covered by the banner
+      epd_cancel_banner();
+      break;
   }
-  edp_update();
-  delay(100);
+  delay(250);
   prepareSleep();
   esp_deep_sleep_start();
 }
