@@ -30,9 +30,12 @@ enum imageState {
   IMAGE_ERROR
 };
 
+// Names to display on the banner when updating the display
 char* screenNames[4]={"FOTO","OGGI","METEO","NOTIZIE"};
 int vref = 1100;
+
 WiFiMulti wifiMulti;
+// Address of the images. File names go from "epd_image_0.pgm" to "epd_image_3.pgm"
 String URL = "http://fotoni.it/public/2021/epd_image";  // Suffixed with "_[screen_num].pgm"
 
 uint8_t *framebuffer;
@@ -41,6 +44,7 @@ uint8_t *framebuffer;
 RTC_DATA_ATTR uint8_t screenNum = 0;
 RTC_DATA_ATTR uint16_t imageCrc[4] = {0, 0, 0, 0};
 
+// This is actually executed at each wakeup
 void setup() {
   wifiMulti.addAP(WIFI_SSID, WIFI_PWD);
   epd_init();
@@ -128,16 +132,6 @@ FontProperties fontP = { 0xFF, 0x80, 33, 0};
 int cursor_x = (EPD_WIDTH - EPD_HEIGHT) / 2 + 88;
 int cursor_y = EPD_HEIGHT / 2 + 9;
 
-void edp_errorSign() {
-  epd_fill_circle(EPD_WIDTH / 2, EPD_HEIGHT / 2, EPD_HEIGHT / 2 - 20, 0, framebuffer);
-  epd_fill_circle(EPD_WIDTH / 2, EPD_HEIGHT / 2, EPD_HEIGHT / 2 - 60, 0xFF, framebuffer);
-  epd_fill_rect((EPD_WIDTH - EPD_HEIGHT) / 2 + 30, EPD_HEIGHT / 2 - 20, EPD_HEIGHT - 50, 40, 0, framebuffer);
-  cursor_x = (EPD_WIDTH - EPD_HEIGHT) / 2 + 88;
-  cursor_y = EPD_HEIGHT / 2 + 9;
-  char *errMsg = "CONNESSIONE NON RIUSCITA";
-  //  write_string((GFXfont *)&OpenSans12B, errMsg, &cursor_x, &cursor_y, framebuffer);
-  write_mode((GFXfont *)&OpenSans12B, errMsg, &cursor_x, &cursor_y, framebuffer, WHITE_ON_WHITE, &fontP);
-}
 
 void epd_banner(char *text) {
   cursor_x = 14;
@@ -149,18 +143,15 @@ void epd_banner(char *text) {
 }
 
 void epd_cancel_banner() {
-  epd_clear_area_cycles((Rect_t) {
-    0, EPD_HEIGHT - 20, EPD_WIDTH, 19
-  }, 3, 200);
-  delay(100);
   uint8_t *bannerBuffer = framebuffer + EPD_WIDTH * (EPD_HEIGHT - 20) / 2;
-  epd_draw_grayscale_image((Rect_t) {
-    0, EPD_HEIGHT - 20, EPD_WIDTH, 19
-  }, bannerBuffer);
-  delay(100);
-  epd_draw_grayscale_image((Rect_t) {
-    0, EPD_HEIGHT - 20, EPD_WIDTH, 19
-  }, bannerBuffer);
+  Rect_t area = { 0, EPD_HEIGHT - 20, EPD_WIDTH, 19 };
+  epd_clear_area_cycles(area, 2, 250);
+  delay(50);
+  epd_draw_grayscale_image(area, bannerBuffer);
+  delay(50);
+  epd_draw_grayscale_image(area, bannerBuffer);
+  delay(50);
+  epd_draw_grayscale_image(area, bannerBuffer);
 }
 
 
